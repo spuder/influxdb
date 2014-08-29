@@ -897,6 +897,7 @@ func (self *ClusterConfiguration) getStartAndEndBasedOnDuration(microsecondsEpoc
 
 func (self *ClusterConfiguration) GetShardsForQuery(querySpec *parser.QuerySpec) Shards {
 	shards := self.getShardsToMatchQuery(querySpec)
+	log.Debug("Querying %d shards for query", len(shards))
 	shards = self.getShardRange(querySpec, shards)
 	if querySpec.IsAscending() {
 		SortShardsByTimeAscending(shards)
