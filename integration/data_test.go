@@ -1454,6 +1454,38 @@ func (self *DataTestSuite) TestGroupByDay(c *C) {
 	c.Assert(maps[1]["count"], Equals, 1.0)
 }
 
+func (self *DataTestSuite) TestLogicalGroupByBoundaries(c *C) {
+	// 1412092800s = Tuesday, 2014-10-07 12:00:00 -0400
+	// 1412352000s = Friday, 2014-10-10 12:00:00 -0400
+	// 1412611200s = Monday, 2014-10-13 12:00:00 -0400
+	data := `
+  [{
+    "name": "test_group_by_week",
+    "columns": ["value", "time"],
+    "points": [
+      [1, 1412092800],
+      [2, 1412092800],
+      [3, 1412092800],
+
+      [4, 1412352000],
+      [5, 1412352000],
+      [6, 1412352000],
+      [7, 1412352000],
+
+      [8, 1412611200],
+      [9, 1412611200]
+    ]
+  }]`
+
+	self.client.WriteJsonData(data, c, "s")
+	collection := self.client.RunQuery("select count(value) from test_group_by_week group by time(1w)", c)
+	c.Assert(collection, HasLen, 1)
+	maps := ToMap(collection[0])
+	c.Assert(maps, HasLen, 2)
+	c.Assert(maps[0]["count"], Equals, 2.0)
+	c.Assert(maps[1]["count"], Equals, 7.0)
+}
+
 func (self *DataTestSuite) TestLimitQueryOnSingleShard(c *C) {
 	data := `[{"points": [[4], [10], [5]], "name": "test_limit_query_single_shard", "columns": ["value"]}]`
 	self.client.WriteJsonData(data, c)
