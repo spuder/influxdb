@@ -1454,28 +1454,28 @@ func (self *DataTestSuite) TestGroupByDay(c *C) {
 	c.Assert(maps[1]["count"], Equals, 1.0)
 }
 
-func (self *DataTestSuite) TestLogicalGroupByBoundaries(c *C) {
-	// 1412092800s = Tuesday, 2014-10-07 12:00:00 -0400
-	// 1412352000s = Friday, 2014-10-10 12:00:00 -0400
-	// 1412611200s = Monday, 2014-10-13 12:00:00 -0400
-	data := `
+func (self *DataTestSuite) TestLogicalGroupByBoundariesForWeek(c *C) {
+	tueSep30 := time.Date(2014, 9, 30, 12, 0, 0, 0, time.UTC).Unix()
+	friOct03 := time.Date(2014, 10, 3, 12, 0, 0, 0, time.UTC).Unix()
+	monOct06 := time.Date(2014, 10, 6, 12, 0, 0, 0, time.UTC).Unix()
+	data := fmt.Sprintf(`
   [{
     "name": "test_group_by_week",
     "columns": ["value", "time"],
     "points": [
-      [1, 1412092800],
-      [2, 1412092800],
-      [3, 1412092800],
+      [1, %d],
+      [2, %d],
+      [3, %d],
 
-      [4, 1412352000],
-      [5, 1412352000],
-      [6, 1412352000],
-      [7, 1412352000],
+      [4, %d],
+      [5, %d],
+      [6, %d],
+      [7, %d],
 
-      [8, 1412611200],
-      [9, 1412611200]
+      [8, %d],
+      [9, %d]
     ]
-  }]`
+  }]`, tueSep30, tueSep30, tueSep30, friOct03, friOct03, friOct03, friOct03, monOct06, monOct06)
 
 	self.client.WriteJsonData(data, c, "s")
 	collection := self.client.RunQuery("select count(value) from test_group_by_week group by time(1w)", c)
