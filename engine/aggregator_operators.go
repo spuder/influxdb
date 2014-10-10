@@ -363,6 +363,10 @@ type DerivativeAggregatorState struct {
 
 type DerivativeAggregator struct {
 	AbstractAggregator
+	query        *parser.SelectQuery
+	duration     *time.Duration  // if it's group by time()
+	lastBktVal   *protocol.Point // last value in bucket if group by time()
+	lastState    *DerivativeAggregatorState
 	defaultValue *protocol.FieldValue
 	alias        string
 }
@@ -380,8 +384,10 @@ func (self *DerivativeAggregator) AggregatePoint(state interface{}, p *protocol.
 		value = *ptr
 	} else {
 		// else ignore this point
+		fmt.Println("AggregatePoint: ignore")
 		return state, nil
 	}
+	fmt.Printf("\nAggregatePoint: value = %v\n", value)
 
 	newValue := &protocol.Point{
 		Timestamp: p.Timestamp,
@@ -393,12 +399,33 @@ func (self *DerivativeAggregator) AggregatePoint(state interface{}, p *protocol.
 		s = &DerivativeAggregatorState{}
 	}
 
+	// starting a new bucket?  (only for group by time())
+	if self.duration != nil && s != self.lastState {
+		// if there was a previous bucket, update its lastValue
+		if self.lastState != nil {
+			self.lastState.lastValue = newValue
+		}
+		// save the current state as the last
+		self.lastState = s
+		if self.lastState != nil {
+			fmt.Printf("AggregatePoint: self.lastState = %v\n", self.lastState)
+		}
+	}
+
 	if s.firstValue == nil {
 		s.firstValue = newValue
+		fmt.Printf("AggregatePoint: s.firstValue = %v\n", s.firstValue)
 		return s, nil
 	}
 
-	s.lastValue = newValue
+	if self.duration == nil {
+		s.lastValue = newValue
+	} else {
+		s.lastValue = s.firstValue
+	}
+
+	fmt.Printf("AggregatePoint: s.lastValue = %v\n", s.lastValue)
+
 	return s, nil
 }
 
@@ -410,6 +437,7 @@ func (self *DerivativeAggregator) ColumnNames() []string {
 }
 
 func (self *DerivativeAggregator) GetValues(state interface{}) [][]*protocol.FieldValue {
+	dbgstack()
 	s, ok := state.(*DerivativeAggregatorState)
 	if !ok {
 		return [][]*protocol.FieldValue{{self.defaultValue}}
@@ -422,6 +450,7 @@ func (self *DerivativeAggregator) GetValues(state interface{}) [][]*protocol.Fie
 	// if an old value exist, then compute the derivative and insert it in the points slice
 	deltaT := float64(*s.lastValue.Timestamp-*s.firstValue.Timestamp) / float64(time.Second/time.Microsecond)
 	deltaV := *s.lastValue.Values[0].DoubleValue - *s.firstValue.Values[0].DoubleValue
+	fmt.Printf("\ndv = %v, dt = %v\n", deltaV, deltaT)
 	derivative := deltaV / deltaT
 	return [][]*protocol.FieldValue{
 		{
@@ -444,13 +473,21 @@ func NewDerivativeAggregator(q *parser.SelectQuery, v *parser.Value, defaultValu
 		return nil, err
 	}
 
-	return &DerivativeAggregator{
+	da := &DerivativeAggregator{
 		AbstractAggregator: AbstractAggregator{
 			value: v.Elems[0],
 		},
+		query:        q,
 		defaultValue: wrappedDefaultValue,
 		alias:        v.Alias,
-	}, nil
+	}
+
+	da.duration, err = q.GetGroupByClause().GetGroupByTime()
+	if err != nil {
+		return nil, err
+	}
+
+	return da, nil
 }
 
 //

@@ -3,6 +3,7 @@ package engine
 import (
 	"fmt"
 	"math"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ type SeriesState struct {
 	trie          *Trie
 	pointsRange   *PointRange
 	lastTimestamp int64
+	lastPoint     interface{}
 }
 
 type AggregatorEngine struct {
@@ -123,6 +125,7 @@ func (self *AggregatorEngine) getSeriesState(name string) *SeriesState {
 // tree and on close() we loop through the groups and flush their
 // values with a timestamp equal to now()
 func (self *AggregatorEngine) aggregateValuesForSeries(series *protocol.Series) (bool, error) {
+	dbgstack()
 	for _, aggregator := range self.aggregators {
 		if err := aggregator.InitializeFieldsMetadata(series); err != nil {
 			return false, err
@@ -147,6 +150,7 @@ func (self *AggregatorEngine) aggregateValuesForSeries(series *protocol.Series) 
 		// start a new bucket
 		if self.duration != nil && !self.isFillQuery {
 			timestamp := self.getTimestampFromPoint(point)
+			//fmt.Printf("timestamp = %v\n", timestamp)
 			// this is the timestamp aggregator
 			if seriesState.started && seriesState.lastTimestamp != timestamp {
 				self.runAggregatesForTable(series.GetName())
@@ -155,7 +159,10 @@ func (self *AggregatorEngine) aggregateValuesForSeries(series *protocol.Series) 
 			seriesState.started = true
 		}
 
+		//fmt.Println("aggregateValuesForSeries 1")
+
 		// get the group this point belongs to
+		//fmt.Printf("len(self.elems) = %d\n", len(self.elems))
 		for idx, elem := range self.elems {
 			// TODO: create an index from fieldname to index
 
@@ -169,13 +176,17 @@ func (self *AggregatorEngine) aggregateValuesForSeries(series *protocol.Series) 
 				return false, err
 			}
 			group[idx] = value
+			//fmt.Printf("elem = %v, value = %v\n", elem, value)
 		}
+		//fmt.Println("aggregateValuesForSeries 2")
 
 		// if this is a fill() query, add the timestamp at the end
 		if includeTimestampInGroup {
 			timestamp := self.getTimestampFromPoint(point)
+			//fmt.Printf("2 timestamp = %v\n", timestamp)
 			group[len(self.elems)] = &protocol.FieldValue{Int64Value: protocol.Int64(timestamp)}
 		}
+		//fmt.Println("aggregateValuesForSeries 3")
 
 		// update the state of the given group
 		node := seriesState.trie.GetNode(group)
@@ -187,6 +198,7 @@ func (self *AggregatorEngine) aggregateValuesForSeries(series *protocol.Series) 
 			}
 		}
 	}
+	//fmt.Println("aggregateValuesForSeries 4")
 
 	return true, nil
 }
@@ -205,6 +217,7 @@ func (self *AggregatorEngine) calculateSummariesForTable(table string) {
 }
 
 func (self *AggregatorEngine) runAggregatesForTable(table string) (bool, error) {
+	dbgstack()
 	self.calculateSummariesForTable(table)
 
 	state := self.getSeriesState(table)
@@ -217,6 +230,7 @@ func (self *AggregatorEngine) runAggregatesForTable(table string) (bool, error) 
 
 	var err error
 	if self.duration != nil && self.isFillQuery {
+		//if self.duration != nil {
 		timestampRange := state.pointsRange
 		if self.startTimeSpecified {
 			timestampRange = &PointRange{startTime: self.startTime, endTime: self.endTime}
@@ -224,6 +238,7 @@ func (self *AggregatorEngine) runAggregatesForTable(table string) (bool, error) 
 
 		startBucket := self.getTimestampBucket(uint64(timestampRange.startTime))
 		endBucket := self.getTimestampBucket(uint64(timestampRange.endTime))
+		fmt.Printf("startBucket = %v, endBucket = %v\n", startBucket, endBucket)
 		durationMicro := self.duration.Nanoseconds() / 1000
 		traverser := newBucketTraverser(trie, len(self.elems), len(self.aggregators), startBucket, endBucket, durationMicro, self.ascending)
 		// apply the function f to the nodes of the trie, such that n1 is
@@ -370,4 +385,9 @@ func crossProduct(values [][][]*protocol.FieldValue) [][]*protocol.FieldValue {
 		}
 	}
 	return returnValues
+}
+
+func dbgstack() {
+	debug.PrintStack()
+	fmt.Println(" ")
 }
