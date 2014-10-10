@@ -1458,6 +1458,9 @@ func (self *DataTestSuite) TestLogicalGroupByBoundariesForWeek(c *C) {
 	tueSep30 := time.Date(2014, 9, 30, 12, 0, 0, 0, time.UTC).Unix()
 	friOct03 := time.Date(2014, 10, 3, 12, 0, 0, 0, time.UTC).Unix()
 	monOct06 := time.Date(2014, 10, 6, 12, 0, 0, 0, time.UTC).Unix()
+
+	sunSep28 := time.Date(2014, 9, 28, 0, 0, 0, 0, time.UTC).UnixNano() / int64(time.Millisecond)
+	sunOct05 := time.Date(2014, 10, 5, 0, 0, 0, 0, time.UTC).UnixNano() / int64(time.Millisecond)
 	data := fmt.Sprintf(`
   [{
     "name": "test_group_by_week",
@@ -1482,8 +1485,52 @@ func (self *DataTestSuite) TestLogicalGroupByBoundariesForWeek(c *C) {
 	c.Assert(collection, HasLen, 1)
 	maps := ToMap(collection[0])
 	c.Assert(maps, HasLen, 2)
-	c.Assert(maps[0]["count"], Equals, 2.0)
-	c.Assert(maps[1]["count"], Equals, 7.0)
+	c.Assert(maps[0], DeepEquals, map[string]interface{}{"time": float64(sunOct05), "count": 2.0})
+	c.Assert(maps[1], DeepEquals, map[string]interface{}{"time": float64(sunSep28), "count": 7.0})
+}
+
+func (self *DataTestSuite) TestLogicalGroupByBoundariesForMonth(c *C) {
+	aug30 := time.Date(2014, 8, 30, 12, 0, 0, 0, time.UTC).Unix()
+	aug31 := time.Date(2014, 8, 31, 12, 0, 0, 0, time.UTC).Unix()
+	sep01 := time.Date(2014, 9, 1, 12, 0, 0, 0, time.UTC).Unix()
+	sep30 := time.Date(2014, 9, 30, 12, 0, 0, 0, time.UTC).Unix()
+	oct01 := time.Date(2014, 10, 1, 12, 0, 0, 0, time.UTC).Unix()
+
+	aug := time.Date(2014, 8, 1, 0, 0, 0, 0, time.UTC).UnixNano() / int64(time.Millisecond)
+	sep := time.Date(2014, 9, 1, 0, 0, 0, 0, time.UTC).UnixNano() / int64(time.Millisecond)
+	oct := time.Date(2014, 10, 1, 0, 0, 0, 0, time.UTC).UnixNano() / int64(time.Millisecond)
+
+	data := fmt.Sprintf(`
+  [{
+    "name": "test_group_by_month",
+    "columns": ["value", "time"],
+    "points": [
+      [1, %d],
+
+      [2, %d],
+      [3, %d],
+
+      [4, %d],
+      [5, %d],
+      [6, %d],
+      [7, %d],
+
+      [8, %d],
+      [9, %d],
+
+      [10, %d],
+      [11, %d]
+    ]
+  }]`, aug30, aug31, aug31, sep01, sep01, sep01, sep01, sep30, sep30, oct01, oct01)
+
+	self.client.WriteJsonData(data, c, "s")
+	collection := self.client.RunQuery("select count(value) from test_group_by_month group by time(1M)", c)
+	c.Assert(collection, HasLen, 1)
+	maps := ToMap(collection[0])
+	c.Assert(maps, HasLen, 3)
+	c.Assert(maps[0], DeepEquals, map[string]interface{}{"time": float64(oct), "count": 2.0})
+	c.Assert(maps[1], DeepEquals, map[string]interface{}{"time": float64(sep), "count": 6.0})
+	c.Assert(maps[2], DeepEquals, map[string]interface{}{"time": float64(aug), "count": 3.0})
 }
 
 func (self *DataTestSuite) TestLimitQueryOnSingleShard(c *C) {
